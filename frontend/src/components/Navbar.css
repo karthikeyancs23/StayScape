@@ -1,0 +1,225 @@
+
+/* ==================================
+   STAYSCAPE PREMIUM NAVBAR
+================================== */
+
+.site-header {
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    width: 100%;
+    background: #ffffff;
+    border-bottom: 1px solid #eeeae3;
+    box-shadow: 0 4px 18px rgba(15, 40, 55, 0.05);
+}
+
+.navbar {
+    width: 90%;
+    max-width: 1350px;
+    min-height: 82px;
+    margin: 0 auto;
+
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+/* Brand */
+
+.brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 11px;
+
+    color: #15394b;
+    text-decoration: none;
+}
+
+.brand-icon {
+    width: 43px;
+    height: 43px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    color: #ffffff;
+    background: #15394b;
+    border-radius: 12px;
+}
+
+.brand-name {
+    font-family: Georgia, serif;
+    font-size: 27px;
+    font-weight: 700;
+    letter-spacing: -0.8px;
+}
+
+.brand-name span {
+    color: #c58b45;
+}
+
+/* Navigation menu */
+
+.nav-menu {
+    display: flex;
+    align-items: center;
+    gap: 45px;
+}
+
+.nav-links {
+    display: flex;
+    align-items: center;
+    gap: 35px;
+}
+
+.nav-item {
+    position: relative;
+    padding: 10px 0;
+
+    color: #586873;
+    text-decoration: none;
+    font-size: 15px;
+    font-weight: 600;
+
+    transition: color 0.25s ease;
+}
+
+.nav-item:hover,
+.nav-item.selected {
+    color: #c58b45;
+}
+
+.nav-item::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    bottom: 2px;
+
+    width: 0;
+    height: 2px;
+    background: #c58b45;
+
+    transition: width 0.25s ease;
+}
+
+.nav-item:hover::after,
+.nav-item.selected::after {
+    width: 100%;
+}
+
+/* Add hotel button */
+
+.nav-add-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+
+    padding: 13px 21px;
+
+    color: #ffffff;
+    background: #15394b;
+    border: 1px solid #15394b;
+    border-radius: 9px;
+
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 600;
+
+    transition: all 0.25s ease;
+}
+
+.nav-add-button:hover {
+    color: #ffffff;
+    background: #c58b45;
+    border-color: #c58b45;
+    transform: translateY(-2px);
+}
+
+/* Mobile menu button */
+
+.menu-toggle {
+    display: none;
+    align-items: center;
+    justify-content: center;
+
+    width: 42px;
+    height: 42px;
+
+    color: #15394b;
+    background: #f5f4f0;
+    border: 1px solid #e8e5df;
+    border-radius: 9px;
+}
+
+/* ==================================
+   TABLET AND MOBILE
+================================== */
+
+@media (max-width: 768px) {
+
+    .navbar {
+        width: 92%;
+        min-height: 72px;
+    }
+
+    .brand-name {
+        font-size: 24px;
+    }
+
+    .menu-toggle {
+        display: flex;
+    }
+
+    .nav-menu {
+        display: none;
+
+        position: absolute;
+        top: 72px;
+        left: 0;
+        right: 0;
+
+        padding: 25px 4%;
+
+        flex-direction: column;
+        align-items: stretch;
+        gap: 22px;
+
+        background: #ffffff;
+        border-top: 1px solid #eeeae3;
+        box-shadow: 0 12px 20px rgba(15, 40, 55, 0.09);
+    }
+
+    .nav-menu.show-menu {
+        display: flex;
+    }
+
+    .nav-links {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 15px;
+    }
+
+    .nav-item {
+        display: block;
+        padding: 10px 0;
+    }
+
+    .nav-add-button {
+        width: 100%;
+    }
+}
+
+/* Small mobile */
+
+@media (max-width: 380px) {
+    .brand-name {
+        font-size: 21px;
+    }
+
+    .brand-icon {
+        width: 39px;
+        height: 39px;
+    }
+}
