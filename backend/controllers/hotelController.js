@@ -1,23 +1,82 @@
 
 const pool = require("../config/db");
-const fs = require("fs");
-const path = require("path");
+const cloudinary = require("../config/cloudinary");
 
-// Delete an uploaded image from the server
-const deleteImageFile = (imagePath) => {
-    if (!imagePath) return;
+// ==========================================
+// CLOUDINARY IMAGE HELPERS
+// ==========================================
 
-    const filename = path.basename(imagePath);
-    const fullPath = path.join(__dirname, "..", "uploads", filename);
+// Upload image buffer directly to Cloudinary
+const uploadToCloudinary = (fileBuffer) => {
+    return new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+            {
+                folder: "stayscape/hotels",
+                resource_type: "image"
+            },
+            (error, result) => {
+                if (error) {
+                    return reject(error);
+                }
 
-    if (fs.existsSync(fullPath)) {
-        fs.unlinkSync(fullPath);
+                resolve(result);
+            }
+        );
+
+        stream.end(fileBuffer);
+    });
+};
+
+// Delete image from Cloudinary
+const deleteCloudinaryImage = async (imageUrl) => {
+    if (
+        !imageUrl ||
+        !imageUrl.includes("res.cloudinary.com")
+    ) {
+        return;
+    }
+
+    try {
+        const url = new URL(imageUrl);
+        const uploadIndex = url.pathname.indexOf("/upload/");
+
+        if (uploadIndex === -1) {
+            return;
+        }
+
+        let publicId = url.pathname.substring(uploadIndex + 8);
+
+        // Remove Cloudinary version number
+        publicId = publicId.replace(/^v\d+\//, "");
+
+        // Remove file extension
+        publicId = publicId.replace(/\.[^/.]+$/, "");
+
+        await cloudinary.uploader.destroy(publicId, {
+            resource_type: "image"
+        });
+
+    } catch (error) {
+        console.error(
+            "Cloudinary image deletion error:",
+            error.message
+        );
     }
 };
 
-// Validate hotel fields
+
+// ==========================================
+// HOTEL VALIDATION
+// ==========================================
+
 const validateHotel = (data) => {
-    const { title, description, latitude, longitude, price } = data;
+    const {
+        title,
+        description,
+        latitude,
+        longitude,
+        price
+    } = data;
 
     if (
         typeof title !== "string" ||
@@ -27,7 +86,10 @@ const validateHotel = (data) => {
         return "Title is required and must be at most 150 characters";
     }
 
-    if (typeof description !== "string" || !description.trim()) {
+    if (
+        typeof description !== "string" ||
+        !description.trim()
+    ) {
         return "Description is required";
     }
 
@@ -36,22 +98,30 @@ const validateHotel = (data) => {
     const hotelPrice = Number(price);
 
     if (
-        latitude === "" || latitude === undefined ||
-        !Number.isFinite(lat) || lat < -90 || lat > 90
+        latitude === "" ||
+        latitude === undefined ||
+        !Number.isFinite(lat) ||
+        lat < -90 ||
+        lat > 90
     ) {
         return "Enter a valid latitude";
     }
 
     if (
-        longitude === "" || longitude === undefined ||
-        !Number.isFinite(lng) || lng < -180 || lng > 180
+        longitude === "" ||
+        longitude === undefined ||
+        !Number.isFinite(lng) ||
+        lng < -180 ||
+        lng > 180
     ) {
         return "Enter a valid longitude";
     }
 
     if (
-        price === "" || price === undefined ||
-        !Number.isFinite(hotelPrice) || hotelPrice <= 0
+        price === "" ||
+        price === undefined ||
+        !Number.isFinite(hotelPrice) ||
+        hotelPrice <= 0
     ) {
         return "Price must be greater than zero";
     }
@@ -59,13 +129,18 @@ const validateHotel = (data) => {
     return null;
 };
 
-// POST - Create hotel
+
+// ==========================================
+// POST - CREATE HOTEL
+// ==========================================
+
 const createHotel = async (req, res, next) => {
+    let uploadedImage = null;
+
     try {
         const error = validateHotel(req.body);
 
         if (error) {
-            if (req.file) deleteImageFile(req.file.filename);
             return res.status(400).json({
                 success: false,
                 message: error
@@ -80,13 +155,25 @@ const createHotel = async (req, res, next) => {
             price
         } = req.body;
 
-        const image = req.file
-            ? `/uploads/${req.file.filename}`
-            : null;
+        // Upload image to Cloudinary
+        if (req.file) {
+            const result = await uploadToCloudinary(
+                req.file.buffer
+            );
+
+            uploadedImage = result.secure_url;
+        }
 
         const query = `
             INSERT INTO hotels
-            (title, description, latitude, longitude, price, image)
+            (
+                title,
+                description,
+                latitude,
+                longitude,
+                price,
+                image
+            )
             VALUES ($1, $2, $3, $4, $5, $6)
             RETURNING *
         `;
@@ -97,7 +184,7 @@ const createHotel = async (req, res, next) => {
             Number(latitude),
             Number(longitude),
             Number(price),
-            image
+            uploadedImage
         ];
 
         const result = await pool.query(query, values);
@@ -109,12 +196,21 @@ const createHotel = async (req, res, next) => {
         });
 
     } catch (error) {
-        if (req.file) deleteImageFile(req.file.filename);
+        // Clean up uploaded image if database insertion fails
+        if (uploadedImage) {
+            await deleteCloudinaryImage(uploadedImage);
+        }
+
         next(error);
     }
 };
 
-// GET - Get all hotels with search, price filters and pagination
+
+// ==========================================
+// GET - ALL HOTELS
+// SEARCH, PRICE FILTER AND PAGINATION
+// ==========================================
+
 const getHotels = async (req, res, next) => {
     try {
         const {
@@ -129,9 +225,11 @@ const getHotels = async (req, res, next) => {
         const limitNumber = Number(limit);
 
         if (
-            !Number.isInteger(pageNumber) || pageNumber < 1 ||
+            !Number.isInteger(pageNumber) ||
+            pageNumber < 1 ||
             !Number.isInteger(limitNumber) ||
-            limitNumber < 1 || limitNumber > 100
+            limitNumber < 1 ||
+            limitNumber > 100
         ) {
             return res.status(400).json({
                 success: false,
@@ -141,9 +239,19 @@ const getHotels = async (req, res, next) => {
 
         if (
             (minPrice !== undefined &&
-                (minPrice === "" || !Number.isFinite(Number(minPrice)) || Number(minPrice) < 0)) ||
+                (
+                    minPrice === "" ||
+                    !Number.isFinite(Number(minPrice)) ||
+                    Number(minPrice) < 0
+                )
+            ) ||
             (maxPrice !== undefined &&
-                (maxPrice === "" || !Number.isFinite(Number(maxPrice)) || Number(maxPrice) < 0))
+                (
+                    maxPrice === "" ||
+                    !Number.isFinite(Number(maxPrice)) ||
+                    Number(maxPrice) < 0
+                )
+            )
         ) {
             return res.status(400).json({
                 success: false,
@@ -190,12 +298,20 @@ const getHotels = async (req, res, next) => {
             ${whereClause}
         `;
 
-        const countResult = await pool.query(countQuery, values);
+        const countResult = await pool.query(
+            countQuery,
+            values
+        );
+
         const total = Number(countResult.rows[0].total);
 
         const offset = (pageNumber - 1) * limitNumber;
 
-        const dataValues = [...values, limitNumber, offset];
+        const dataValues = [
+            ...values,
+            limitNumber,
+            offset
+        ];
 
         const dataQuery = `
             SELECT *
@@ -206,7 +322,10 @@ const getHotels = async (req, res, next) => {
             OFFSET $${dataValues.length}
         `;
 
-        const result = await pool.query(dataQuery, dataValues);
+        const result = await pool.query(
+            dataQuery,
+            dataValues
+        );
 
         res.status(200).json({
             success: true,
@@ -225,7 +344,11 @@ const getHotels = async (req, res, next) => {
     }
 };
 
-// GET - Get one hotel by ID
+
+// ==========================================
+// GET - HOTEL BY ID
+// ==========================================
+
 const getHotelById = async (req, res, next) => {
     try {
         const id = Number(req.params.id);
@@ -259,13 +382,18 @@ const getHotelById = async (req, res, next) => {
     }
 };
 
-// PUT - Update hotel
+
+// ==========================================
+// PUT - UPDATE HOTEL
+// ==========================================
+
 const updateHotel = async (req, res, next) => {
+    let uploadedImage = null;
+
     try {
         const id = Number(req.params.id);
 
         if (!Number.isInteger(id) || id <= 0) {
-            if (req.file) deleteImageFile(req.file.filename);
             return res.status(400).json({
                 success: false,
                 message: "Invalid hotel ID"
@@ -275,7 +403,6 @@ const updateHotel = async (req, res, next) => {
         const error = validateHotel(req.body);
 
         if (error) {
-            if (req.file) deleteImageFile(req.file.filename);
             return res.status(400).json({
                 success: false,
                 message: error
@@ -288,7 +415,6 @@ const updateHotel = async (req, res, next) => {
         );
 
         if (existing.rows.length === 0) {
-            if (req.file) deleteImageFile(req.file.filename);
             return res.status(404).json({
                 success: false,
                 message: "Hotel not found"
@@ -297,9 +423,16 @@ const updateHotel = async (req, res, next) => {
 
         const oldHotel = existing.rows[0];
 
-        const image = req.file
-            ? `/uploads/${req.file.filename}`
-            : oldHotel.image;
+        // Upload replacement image if provided
+        if (req.file) {
+            const result = await uploadToCloudinary(
+                req.file.buffer
+            );
+
+            uploadedImage = result.secure_url;
+        }
+
+        const image = uploadedImage || oldHotel.image;
 
         const query = `
             UPDATE hotels
@@ -327,8 +460,9 @@ const updateHotel = async (req, res, next) => {
 
         const result = await pool.query(query, values);
 
-        if (req.file && oldHotel.image) {
-            deleteImageFile(oldHotel.image);
+        // Delete old Cloudinary image after successful update
+        if (uploadedImage && oldHotel.image) {
+            await deleteCloudinaryImage(oldHotel.image);
         }
 
         res.status(200).json({
@@ -338,12 +472,91 @@ const updateHotel = async (req, res, next) => {
         });
 
     } catch (error) {
-        if (req.file) deleteImageFile(req.file.filename);
+        if (uploadedImage) {
+            await deleteCloudinaryImage(uploadedImage);
+        }
+
         next(error);
     }
 };
 
-// DELETE - Delete hotel
+
+// ==========================================
+// PATCH - UPDATE ONLY HOTEL IMAGE
+// ==========================================
+
+const updateHotelImage = async (req, res, next) => {
+    let uploadedImage = null;
+
+    try {
+        const id = Number(req.params.id);
+
+        if (!Number.isInteger(id) || id <= 0) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid hotel ID"
+            });
+        }
+
+        if (!req.file) {
+            return res.status(400).json({
+                success: false,
+                message: "Please select an image"
+            });
+        }
+
+        const existing = await pool.query(
+            "SELECT * FROM hotels WHERE id = $1",
+            [id]
+        );
+
+        if (existing.rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "Hotel not found"
+            });
+        }
+
+        const oldHotel = existing.rows[0];
+
+        const uploadResult = await uploadToCloudinary(
+            req.file.buffer
+        );
+
+        uploadedImage = uploadResult.secure_url;
+
+        const updated = await pool.query(
+            `UPDATE hotels
+             SET image = $1,
+                 updated_at = CURRENT_TIMESTAMP
+             WHERE id = $2
+             RETURNING *`,
+            [uploadedImage, id]
+        );
+
+        // Delete old image only after successful database update
+        await deleteCloudinaryImage(oldHotel.image);
+
+        res.status(200).json({
+            success: true,
+            message: "Hotel image updated successfully",
+            data: updated.rows[0]
+        });
+
+    } catch (error) {
+        if (uploadedImage) {
+            await deleteCloudinaryImage(uploadedImage);
+        }
+
+        next(error);
+    }
+};
+
+
+// ==========================================
+// DELETE - HOTEL
+// ==========================================
+
 const deleteHotel = async (req, res, next) => {
     try {
         const id = Number(req.params.id);
@@ -367,7 +580,8 @@ const deleteHotel = async (req, res, next) => {
             });
         }
 
-        deleteImageFile(result.rows[0].image);
+        // Delete Cloudinary image if it belongs to Cloudinary
+        await deleteCloudinaryImage(result.rows[0].image);
 
         res.status(200).json({
             success: true,
@@ -379,10 +593,16 @@ const deleteHotel = async (req, res, next) => {
     }
 };
 
+
+// ==========================================
+// EXPORT CONTROLLERS
+// ==========================================
+
 module.exports = {
     createHotel,
     getHotels,
     getHotelById,
     updateHotel,
+    updateHotelImage,
     deleteHotel
 };
