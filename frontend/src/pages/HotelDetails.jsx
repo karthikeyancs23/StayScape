@@ -1,6 +1,7 @@
 
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+
 import {
     MapContainer,
     TileLayer,
@@ -9,9 +10,11 @@ import {
     CircleMarker,
     useMap
 } from "react-leaflet";
+
 import L from "leaflet";
 
 import { getHotelById } from "../services/hotelService";
+
 import {
     ArrowLeft,
     MapPin,
@@ -39,7 +42,25 @@ const hotelMarkerIcon = new L.Icon({
     shadowSize: [41, 41]
 });
 
-const IMAGE_BASE_URL = "http://localhost:5000";
+// Backend base URL
+const API_BASE_URL = (
+    import.meta.env.VITE_API_URL || "http://localhost:5000/api"
+).replace(/\/api\/?$/, "");
+
+// Handle Cloudinary URLs and older local image paths
+const getHotelImageUrl = (image) => {
+    if (!image) {
+        return "/placeholder-hotel.jpg";
+    }
+
+    // Cloudinary image URL: use it directly
+    if (/^https?:\/\//i.test(image)) {
+        return image;
+    }
+
+    // Older local uploads: use the backend URL
+    return `${API_BASE_URL}${image.startsWith("/") ? image : `/${image}`}`;
+};
 
 // Automatically move the map when its center changes
 function MapController({ center }) {
@@ -100,7 +121,7 @@ function HotelDetails() {
         };
     }, [id]);
 
-    // Get the visitor's current location using browser Geolocation API
+    // Get the visitor's current location
     const getCurrentLocation = () => {
         if (!navigator.geolocation) {
             setLocationMessage(
@@ -126,11 +147,13 @@ function HotelDetails() {
                 let message = "Unable to get your current location.";
 
                 if (locationError.code === 1) {
-                    message = "Location permission was denied. Please allow location access in your browser.";
+                    message =
+                        "Location permission was denied. Please allow location access in your browser.";
                 } else if (locationError.code === 2) {
                     message = "Your current location is unavailable.";
                 } else if (locationError.code === 3) {
-                    message = "Location request timed out. Please try again.";
+                    message =
+                        "Location request timed out. Please try again.";
                 }
 
                 setLocationMessage(message);
@@ -188,14 +211,20 @@ function HotelDetails() {
             {/* Hotel image */}
             <div className="details-hero">
                 <img
-                    src={
-                        hotel.image
-                            ? `${IMAGE_BASE_URL}${hotel.image}`
-                            : "/placeholder-hotel.jpg"
-                    }
+                    src={getHotelImageUrl(hotel.image)}
                     alt={hotel.title}
                     className="details-hero-image"
+                    onError={(e) => {
+                        console.error(
+                            "Hotel image failed to load:",
+                            e.currentTarget.src
+                        );
+
+                        e.currentTarget.onerror = null;
+                        e.currentTarget.src = "/placeholder-hotel.jpg";
+                    }}
                 />
+
                 <div className="details-image-overlay">
                     <span>STAYSCAPE PROPERTY</span>
                     <h1>{hotel.title}</h1>
@@ -244,6 +273,7 @@ function HotelDetails() {
 
             {/* Map */}
             <section className="hotel-map-section">
+
                 <div className="map-heading">
                     <div>
                         <span className="details-eyebrow">
@@ -276,6 +306,7 @@ function HotelDetails() {
 
                 {validCoordinates ? (
                     <div className="hotel-map">
+
                         <MapContainer
                             center={hotelPosition}
                             zoom={14}
@@ -315,10 +346,14 @@ function HotelDetails() {
                                         weight: 3
                                     }}
                                 >
-                                    <Popup>Your current location</Popup>
+                                    <Popup>
+                                        Your current location
+                                    </Popup>
                                 </CircleMarker>
                             )}
+
                         </MapContainer>
+
                     </div>
                 ) : (
                     <div className="invalid-coordinates">
@@ -349,6 +384,7 @@ function HotelDetails() {
                         Get Directions
                     </a>
                 )}
+
             </section>
 
         </main>
